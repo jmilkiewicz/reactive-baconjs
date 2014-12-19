@@ -264,9 +264,7 @@
   var alreadyProcessedBooks = {};
 
   var NewQueryEvent = {
-    render: function () {
-      $('#waiting-msg').show();
-      $('#total-count').text('0');
+    render: function () {      
       $('.results').html('');
     },
     hasNotBeenProcessed: function () {
@@ -282,7 +280,24 @@
     }
   };
 
-  var BookEvent = function () {
+   var StartQueryEvent = {
+    render: function () {
+      $('#waiting-msg').show();    
+    },
+    hasNotBeenProcessed: function () {
+      return true;
+    },
+    markAsProcessed: function () {
+      Object.keys(alreadyProcessedBooks).forEach(function (key) {
+        delete alreadyProcessedBooks[key];
+      });
+    },
+    itemCount: function () {
+      return 0;
+    }
+  };
+
+  var BookEvent = function () {    
     var bookExample = $('.book.example').removeClass('example');
     bookExample.remove();
 
@@ -391,11 +406,16 @@
             .debounce(250)
             .map(toQueryString)
             .flatMapLatest(function (queryString) {
-              return Bacon.once(NewQueryEvent)
-                      .concat(eventStreamForQuery(queryString)
-                              .map(BookEvent)
-                              .mapEnd(EndEvent)
-                      );
+              var searchResultsPrependedWithNewQueryEvent = eventStreamForQuery(queryString).
+              map(BookEvent).
+              withStateMachine(NewQueryEvent, function(init, ev){                  
+                if(init){
+                  return [undefined, [new Bacon.Next(init), ev]];
+                }                                    
+                return [undefined, [ev]];
+              })
+              .mapEnd(EndEvent)              
+              return Bacon.once(StartQueryEvent).concat(searchResultsPrependedWithNewQueryEvent);             
             })
             .filter(".hasNotBeenProcessed", alreadyProcessedBooks)
             .doAction(".markAsProcessed", alreadyProcessedBooks)
